@@ -405,6 +405,18 @@ func (r *CronJobReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	scheduledResult := ctrl.Result{RequeueAfter: nextRun.Sub(r.Now())} // save this so we can re-use it elsewhere
 	log = log.WithValues("now", r.Now(), "next run", nextRun)
 
+	// If we’ve missed a run, and we’re still within the deadline to start it, we’ll need to run a job.
+	if missedRun.IsZero() {
+		log.V(1).Info("no upcoming schedule times, sleeping until next")
+		return scheduledResult, nil
+	}
+
+	// make sure we're not too late to start the run
+	log = log.WithValues("current run", missedRun)
+	tooLate := false
+	if cronJob.Spec.StartingDeadlineSeconds != nil {
+		tooLate = missedRun.Add(time.Duration(*cronJob.Spec.StartingDeadlineSeconds) * time.Second).Before(r.Now())
+	}
 }
 
 // SetupWithManager sets up the controller with the Manager.
